@@ -54,7 +54,7 @@ const GameEngine = ({ level, onWin, onLose, onScore, onExit }: GameEngineProps) 
     if (!activeRef.current) return;
     const id = ++fireIdRef.current;
     const x = 10 + Math.random() * 80;
-    const y = 8 + Math.random() * 50;
+    const y = 15 + Math.random() * 55;
     const clicks = CLICKS_BASE + Math.floor(Math.random() * 5);
     setFires(prev => [...prev, { id, x, y, intensity: 8, clicksToExtinguish: clicks, maxClicks: clicks }]);
     if (levelRef.current === 2) {
@@ -191,7 +191,7 @@ const GameEngine = ({ level, onWin, onLose, onScore, onExit }: GameEngineProps) 
   const healthPercent = Math.max(0, 100 - Math.floor(damage));
 
   return (
-    <div className="relative w-full h-screen overflow-hidden select-none">
+    <div className="relative w-full h-screen overflow-hidden select-none flex flex-col">
       <div className="absolute top-3 left-3 right-3 z-20 flex flex-wrap gap-2 items-center justify-between">
         <div className="flex gap-2 items-center">
           <button
@@ -212,22 +212,22 @@ const GameEngine = ({ level, onWin, onLose, onScore, onExit }: GameEngineProps) 
         </span>
       </div>
 
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/3 z-10">
-        <Machine damage={damage} />
+      <div className="flex-1 flex items-center justify-center pt-12 pb-16 px-4">
+        <Machine damage={damage}>
+          {fires.map(fire => (
+            <FireSpot
+              key={fire.id}
+              x={fire.x}
+              y={fire.y}
+              intensity={fire.intensity}
+              maxIntensity={MAX_FIRE}
+              clicksLeft={fire.clicksToExtinguish}
+              maxClicks={fire.maxClicks}
+              onClick={() => handleFireClick(fire.id)}
+            />
+          ))}
+        </Machine>
       </div>
-
-      {fires.map(fire => (
-        <FireSpot
-          key={fire.id}
-          x={fire.x}
-          y={fire.y}
-          intensity={fire.intensity}
-          maxIntensity={MAX_FIRE}
-          clicksLeft={fire.clicksToExtinguish}
-          maxClicks={fire.maxClicks}
-          onClick={() => handleFireClick(fire.id)}
-        />
-      ))}
 
       {level === 2 && suppressBtn && (
         <button
@@ -260,8 +260,8 @@ const GameEngine = ({ level, onWin, onLose, onScore, onExit }: GameEngineProps) 
         <div className="absolute inset-0 pointer-events-none z-40 bg-white/15 transition-opacity duration-200" />
       )}
 
-      <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-20 w-[220px]">
-        <div className="h-3 bg-gray-800/80 rounded-full overflow-hidden border border-white/10">
+      <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-20 w-[240px]">
+        <div className="h-3.5 bg-gray-800/80 rounded-full overflow-hidden border border-white/10">
           <div
             className="h-full rounded-full transition-all duration-300 health-bar"
             style={{
@@ -273,7 +273,7 @@ const GameEngine = ({ level, onWin, onLose, onScore, onExit }: GameEngineProps) 
           />
         </div>
         <div className="text-xs text-center text-white/70 mt-0.5 font-bold">
-          ❤️ {healthPercent}%
+          ❤️ Прочность {healthPercent}%
         </div>
       </div>
     </div>
