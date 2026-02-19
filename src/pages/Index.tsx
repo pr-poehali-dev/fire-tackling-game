@@ -27,6 +27,10 @@ const Index = () => {
     setScore(s);
   }, []);
 
+  const handleExit = useCallback(() => {
+    setScreen('menu');
+  }, []);
+
   if (screen === 'menu') {
     return (
       <div className="game-bg min-h-screen flex flex-col items-center justify-center p-4">
@@ -86,7 +90,7 @@ const Index = () => {
               <li className="flex gap-2"><span>•</span><span>При появлении огня загорается моргающая кнопка 🧯</span></li>
               <li className="flex gap-2"><span>•</span><span>Нажми на неё — огонь мгновенно потухнет</span></li>
               <li className="flex gap-2"><span>•</span><span>Если не нажать — система сработает автоматически через 30 секунд</span></li>
-              <li className="flex gap-2"><span>•</span><span>Но за 30 секунд машина получит урон!</span></li>
+              <li className="flex gap-2"><span>•</span><span>Но за это время огонь нанесёт урон + штраф 15% при автотушении!</span></li>
             </ul>
           </div>
 
@@ -178,6 +182,7 @@ const Index = () => {
         onWin={handleWin}
         onLose={handleLose}
         onScore={handleScore}
+        onExit={handleExit}
       />
     </div>
   );

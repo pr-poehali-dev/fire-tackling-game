@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import FireSpot from './FireSpot';
 import Machine from './Machine';
 import useGameSounds from './useGameSounds';
+import Icon from '@/components/ui/icon';
 
 interface Fire {
   id: number;
@@ -17,6 +18,7 @@ interface GameEngineProps {
   onWin: () => void;
   onLose: () => void;
   onScore: (s: number) => void;
+  onExit: () => void;
 }
 
 const MAX_FIRE = 100;
@@ -26,9 +28,9 @@ const SPAWN_INTERVAL_L1 = 4500;
 const SPAWN_INTERVAL_L2 = 6000;
 const AUTO_SUPPRESS_TIME = 30;
 const FIRES_TO_WIN = 8;
-const DAMAGE_RATE = 3;
+const DAMAGE_RATE = 3.5;
 
-const GameEngine = ({ level, onWin, onLose, onScore }: GameEngineProps) => {
+const GameEngine = ({ level, onWin, onLose, onScore, onExit }: GameEngineProps) => {
   const [fires, setFires] = useState<Fire[]>([]);
   const [damage, setDamage] = useState(0);
   const [score, setScore] = useState(0);
@@ -37,39 +39,41 @@ const GameEngine = ({ level, onWin, onLose, onScore }: GameEngineProps) => {
   const [screenFlash, setScreenFlash] = useState(false);
   const fireIdRef = useRef(0);
   const sounds = useGameSounds();
+  const soundsRef = useRef(sounds);
+  soundsRef.current = sounds;
   const gameLoopRef = useRef<number>(0);
-  const spawnRef = useRef<number>(0);
+  const spawnRef = useRef<ReturnType<typeof setTimeout>>();
   const activeRef = useRef(true);
-  const damageRef = useRef(0);
   const firesRef = useRef<Fire[]>([]);
+  const levelRef = useRef(level);
+  levelRef.current = level;
 
   firesRef.current = fires;
-  damageRef.current = damage;
 
   const spawnFire = useCallback(() => {
     if (!activeRef.current) return;
     const id = ++fireIdRef.current;
     const x = 10 + Math.random() * 80;
-    const y = 8 + Math.random() * 48;
+    const y = 8 + Math.random() * 50;
     const clicks = CLICKS_BASE + Math.floor(Math.random() * 5);
     setFires(prev => [...prev, { id, x, y, intensity: 8, clicksToExtinguish: clicks, maxClicks: clicks }]);
-    if (level === 2) {
+    if (levelRef.current === 2) {
       setSuppressBtn({ fireId: id, timer: AUTO_SUPPRESS_TIME });
     }
-    sounds.playFireGrow();
-  }, [level, sounds]);
+    soundsRef.current.playFireGrow();
+  }, []);
 
   useEffect(() => {
     activeRef.current = true;
     const startDelay = setTimeout(() => {
       spawnFire();
       const interval = level === 1 ? SPAWN_INTERVAL_L1 : SPAWN_INTERVAL_L2;
-      spawnRef.current = window.setInterval(spawnFire, interval);
-    }, 1000);
+      spawnRef.current = setInterval(spawnFire, interval);
+    }, 800);
     return () => {
       activeRef.current = false;
       clearTimeout(startDelay);
-      clearInterval(spawnRef.current);
+      if (spawnRef.current) clearInterval(spawnRef.current);
     };
   }, [level, spawnFire]);
 
@@ -82,15 +86,12 @@ const GameEngine = ({ level, onWin, onLose, onScore }: GameEngineProps) => {
 
       setFires(prev => prev.map(f => ({
         ...f,
-        intensity: Math.min(f.intensity + FIRE_GROW_RATE * dt * (1 + f.intensity * 0.005), MAX_FIRE),
+        intensity: Math.min(f.intensity + FIRE_GROW_RATE * dt * (1 + f.intensity * 0.008), MAX_FIRE),
       })));
 
       const totalIntensity = firesRef.current.reduce((s, f) => s + f.intensity, 0);
       if (totalIntensity > 0) {
-        setDamage(prev => {
-          const newDmg = prev + (totalIntensity / MAX_FIRE) * dt * DAMAGE_RATE;
-          return Math.min(newDmg, 100);
-        });
+        setDamage(prev => Math.min(prev + (totalIntensity / MAX_FIRE) * dt * DAMAGE_RATE, 100));
       }
 
       gameLoopRef.current = requestAnimationFrame(loop);
@@ -102,21 +103,21 @@ const GameEngine = ({ level, onWin, onLose, onScore }: GameEngineProps) => {
   useEffect(() => {
     if (damage >= 100) {
       activeRef.current = false;
-      clearInterval(spawnRef.current);
-      sounds.playGameOver();
+      if (spawnRef.current) clearInterval(spawnRef.current);
+      soundsRef.current.playGameOver();
       onLose();
     }
-  }, [damage, onLose, sounds]);
+  }, [damage, onLose]);
 
   useEffect(() => {
     if (extinguished >= FIRES_TO_WIN) {
       activeRef.current = false;
-      clearInterval(spawnRef.current);
-      sounds.playWin();
+      if (spawnRef.current) clearInterval(spawnRef.current);
+      soundsRef.current.playWin();
       onScore(score);
       onWin();
     }
-  }, [extinguished, onWin, onScore, score, sounds]);
+  }, [extinguished, onWin, onScore, score]);
 
   useEffect(() => {
     if (!suppressBtn || level !== 2) return;
@@ -124,7 +125,7 @@ const GameEngine = ({ level, onWin, onLose, onScore }: GameEngineProps) => {
       setSuppressBtn(prev => {
         if (!prev) return null;
         if (prev.timer <= 1) {
-          suppressFire(prev.fireId);
+          autoSuppressFire(prev.fireId);
           return null;
         }
         return { ...prev, timer: prev.timer - 1 };
@@ -133,31 +134,48 @@ const GameEngine = ({ level, onWin, onLose, onScore }: GameEngineProps) => {
     return () => clearInterval(interval);
   }, [suppressBtn?.fireId, level]);
 
-  const suppressFire = useCallback((fireId: number) => {
+  const autoSuppressFire = useCallback((fireId: number) => {
     if (!activeRef.current) return;
-    sounds.playSuppress();
+    soundsRef.current.playSuppress();
     setScreenFlash(true);
     setTimeout(() => setScreenFlash(false), 300);
     setFires(prev => {
       const fire = prev.find(f => f.id === fireId);
       if (fire) {
-        setScore(s => s + Math.floor(fire.intensity * 5));
+        setDamage(d => Math.min(d + 15, 100));
+        setScore(s => s + Math.floor(fire.intensity));
         setExtinguished(e => e + 1);
       }
       return prev.filter(f => f.id !== fireId);
     });
     setSuppressBtn(null);
-  }, [sounds]);
+  }, []);
+
+  const manualSuppressFire = useCallback((fireId: number) => {
+    if (!activeRef.current) return;
+    soundsRef.current.playSuppress();
+    setScreenFlash(true);
+    setTimeout(() => setScreenFlash(false), 300);
+    setFires(prev => {
+      const fire = prev.find(f => f.id === fireId);
+      if (fire) {
+        setScore(s => s + Math.floor(fire.intensity * 8));
+        setExtinguished(e => e + 1);
+      }
+      return prev.filter(f => f.id !== fireId);
+    });
+    setSuppressBtn(null);
+  }, []);
 
   const handleFireClick = useCallback((id: number) => {
     if (!activeRef.current) return;
-    sounds.playClick();
+    soundsRef.current.playClick();
     setFires(prev => {
       const updated = prev.map(f => {
         if (f.id !== id) return f;
         const newClicks = f.clicksToExtinguish - 1;
         if (newClicks <= 0) {
-          sounds.playExtinguish();
+          soundsRef.current.playExtinguish();
           setScore(s => s + Math.floor(f.intensity * 10));
           setExtinguished(e => e + 1);
           setScreenFlash(true);
@@ -168,7 +186,7 @@ const GameEngine = ({ level, onWin, onLose, onScore }: GameEngineProps) => {
       });
       return updated.filter(Boolean) as Fire[];
     });
-  }, [sounds]);
+  }, []);
 
   const healthPercent = Math.max(0, 100 - Math.floor(damage));
 
@@ -176,6 +194,12 @@ const GameEngine = ({ level, onWin, onLose, onScore }: GameEngineProps) => {
     <div className="relative w-full h-screen overflow-hidden select-none">
       <div className="absolute top-3 left-3 right-3 z-20 flex flex-wrap gap-2 items-center justify-between">
         <div className="flex gap-2 items-center">
+          <button
+            className="game-hud-badge bg-white/10 text-white/70 border-white/20 hover:bg-white/20 cursor-pointer transition-colors"
+            onClick={onExit}
+          >
+            <Icon name="X" size={14} />
+          </button>
           <span className="game-hud-badge bg-yellow-500/20 text-yellow-300 border-yellow-500/30">
             ⭐ {score}
           </span>
@@ -188,7 +212,7 @@ const GameEngine = ({ level, onWin, onLose, onScore }: GameEngineProps) => {
         </span>
       </div>
 
-      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10">
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/3 z-10">
         <Machine damage={damage} />
       </div>
 
@@ -209,7 +233,7 @@ const GameEngine = ({ level, onWin, onLose, onScore }: GameEngineProps) => {
         <button
           className="absolute z-30 suppress-btn"
           style={{ right: '12px', top: '56px' }}
-          onClick={() => suppressFire(suppressBtn.fireId)}
+          onClick={() => manualSuppressFire(suppressBtn.fireId)}
         >
           <span className="text-xl">🧯</span>
           <span className="ml-2 font-black text-base tracking-wide">ТУШИТЬ</span>
@@ -236,7 +260,7 @@ const GameEngine = ({ level, onWin, onLose, onScore }: GameEngineProps) => {
         <div className="absolute inset-0 pointer-events-none z-40 bg-white/15 transition-opacity duration-200" />
       )}
 
-      <div className="absolute bottom-2 left-1/2 -translate-x-1/2 z-20 w-[220px]">
+      <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-20 w-[220px]">
         <div className="h-3 bg-gray-800/80 rounded-full overflow-hidden border border-white/10">
           <div
             className="h-full rounded-full transition-all duration-300 health-bar"
